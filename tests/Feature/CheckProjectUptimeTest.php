@@ -74,6 +74,62 @@ test('it logs up when the check fails on the first try but succeeds on the retry
     expect($project->uptimeChecks->first()->status)->toBe('up');
 });
 
+test('it skips projects with uptime monitoring disabled', function () {
+    $team = Team::factory()->create();
+    $project = Project::factory()->create([
+        'team_id' => $team->id,
+        'url' => 'https://example.com',
+        'uptime_monitoring_enabled' => false,
+        'last_uptime_status' => null,
+    ]);
+
+    Http::fake([
+        '*' => Http::response('OK', 200),
+    ]);
+
+    $alertService = Mockery::mock(AlertService::class);
+    $alertService->shouldNotReceive('notifyUptimeDown');
+    $this->instance(AlertService::class, $alertService);
+
+    $this->artisan('projects:check-health')
+        ->assertExitCode(0);
+
+    Http::assertNothingSent();
+
+    $project->refresh();
+    expect($project->last_uptime_status)->toBeNull();
+    expect($project->last_uptime_check_at)->toBeNull();
+    expect($project->uptimeChecks)->toHaveCount(0);
+});
+
+test('it does not alert for a disabled project that was previously down', function () {
+    $team = Team::factory()->create();
+    $project = Project::factory()->create([
+        'team_id' => $team->id,
+        'url' => 'https://example.com',
+        'uptime_monitoring_enabled' => false,
+        'uptime_check_interval' => 30,
+        'last_uptime_status' => 'down',
+    ]);
+
+    Http::fake([
+        '*' => Http::response('OK', 200),
+    ]);
+
+    $alertService = Mockery::mock(AlertService::class);
+    $alertService->shouldNotReceive('notifyUptimeDown');
+    $this->instance(AlertService::class, $alertService);
+
+    $this->artisan('projects:check-health')
+        ->assertExitCode(0);
+
+    Http::assertNothingSent();
+
+    $project->refresh();
+    expect($project->last_uptime_status)->toBe('down');
+    expect($project->uptimeChecks)->toHaveCount(0);
+});
+
 test('it logs down and sends alert when all attempts fail', function () {
     $team = Team::factory()->create();
     $project = Project::factory()->create([

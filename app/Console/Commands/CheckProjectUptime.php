@@ -37,7 +37,7 @@ class CheckProjectUptime extends Command
         $this->checkHeartbeats($alertService);
 
         // 3. Support sub-minute intervals (30s)
-        if (Project::where('uptime_check_interval', '<', 60)->whereNotNull('url')->exists()) {
+        if (Project::withUptimeMonitoring()->where('uptime_check_interval', '<', 60)->exists()) {
             $this->info('Waiting 30 seconds for next sub-minute check...');
             sleep(30);
             $this->performUptimeChecks($alertService);
@@ -48,7 +48,7 @@ class CheckProjectUptime extends Command
 
     protected function performUptimeChecks(AlertService $alertService)
     {
-        $projects = Project::whereNotNull('url')->get()->filter(function ($project) {
+        $projects = Project::withUptimeMonitoring()->get()->filter(function ($project) {
             if (is_null($project->last_uptime_check_at)) {
                 return true;
             }
